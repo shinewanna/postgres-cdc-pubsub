@@ -9,6 +9,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if [ $# -ge 1 ]; then
+    # This project's install adds the `sent` flag; refuse to overwrite it with a source that lacks it.
+    if ! grep -q "sent        boolean" "$1/sql/v2_sync/001_install.sql"; then
+        echo "Not refreshing: $1/sql/v2_sync/001_install.sql has no 'sent' flag yet (it would remove it here)." >&2
+        exit 1
+    fi
     cp "$1/sql/v2_sync/001_install.sql"   sql/02_install_change_log.sql
     cp "$1/sql/v2_sync/002_uninstall.sql" sql/03_uninstall_change_log.sql
 fi

@@ -15,3 +15,7 @@ keys/
 dist/
 *.zip
 .pgdata/
+
+# Local python environment
+.venv/
+__pycache__/

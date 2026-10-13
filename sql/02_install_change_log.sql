@@ -36,8 +36,20 @@ CREATE TABLE IF NOT EXISTS products_change_log (
     -- delete to the right venture credential and filter sellers without a join
     id_seller   integer,
     venture     text,
-    changed_at  timestamptz NOT NULL DEFAULT now()     -- lag monitoring only, never a read cursor
+    changed_at  timestamptz NOT NULL DEFAULT now(),    -- lag monitoring only, never a read cursor
+    -- set by the poller once the change was published; the row is kept as a record
+    sent        boolean     NOT NULL DEFAULT false,
+    sent_at     timestamptz
 );
+
+-- Upgrade an existing log (installed before the sent flag existed). No-op otherwise.
+ALTER TABLE products_change_log ADD COLUMN IF NOT EXISTS sent boolean NOT NULL DEFAULT false;
+ALTER TABLE products_change_log ADD COLUMN IF NOT EXISTS sent_at timestamptz;
+
+-- The poller only ever looks at unsent rows, oldest first: keep that fast as sent rows pile up.
+CREATE INDEX IF NOT EXISTS products_change_log_unsent_idx
+    ON products_change_log (id)
+    WHERE NOT sent;
 
 -- Rows the poller isolated as undeliverable (poison-row guard, sc-10825).
 CREATE TABLE IF NOT EXISTS products_change_dead_letter (
@@ -51,13 +63,15 @@ CREATE TABLE IF NOT EXISTS products_change_dead_letter (
 
 COMMENT ON TABLE products_change_log IS
     'V1 -> V2 offer mirror queue (sc-10850): one row per relevant products change, written by the '
-    'products_change_log_capture trigger, deleted by the mirror poller (sc-10825) once V2 accepted it.';
+    'products_change_log_capture trigger; the mirror poller (sc-10825) sets sent = true once it was published.';
 COMMENT ON COLUMN products_change_log.id IS 'Capture order.';
 COMMENT ON COLUMN products_change_log.id_product IS 'The products row that changed.';
 COMMENT ON COLUMN products_change_log.operation IS 'INSERT, UPDATE or DELETE on products.';
 COMMENT ON COLUMN products_change_log.id_seller IS 'Seller of the row (of the deleted row for DELETE).';
 COMMENT ON COLUMN products_change_log.venture IS 'Venture of the row (of the deleted row for DELETE); picks the V2 credential.';
 COMMENT ON COLUMN products_change_log.changed_at IS 'When the change was captured; lag monitoring only, never a read cursor.';
+COMMENT ON COLUMN products_change_log.sent IS 'false = waiting to be published; true = published (row kept as a record).';
+COMMENT ON COLUMN products_change_log.sent_at IS 'When the poller published it.';
 
 COMMENT ON TABLE products_change_dead_letter IS
     'Changes the mirror poller (sc-10825) could not deliver to V2 after repeated attempts; waits for a person.';
