@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# Credentials and local config -- never commit
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*-credentials.json
+*service-account*.json
+keys/
+
+# Build output (function upload packages, local test DBs)
+dist/
+*.zip
+.pgdata/
